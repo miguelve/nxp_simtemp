@@ -1,0 +1,9 @@
+Can I get a makefile template to build an out-of-tree linux driver?
+
+can I get a source file of a simple char driver in linux?
+
+how could I add an IOCTL interface to this driver?
+
+I am creating a linx driver, and I want to get a timestamp from kernel as an unsigned int 64-bit value. What could I use to get it?
+
+I have a char device driver that returns this information on read() calls as a stream of bytes: struct simtemp_sample { __u64 timestamp_ns; // monotonic timestamp __s32 temp_mC; // milli-degree Celsius (e.g., 44123 = 44.123 °C) __u32 flags; // sample flags } __attribute__((packed)); could you write a c++ function that parses this information and prints it to stdout?
