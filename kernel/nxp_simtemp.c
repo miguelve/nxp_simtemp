@@ -18,6 +18,8 @@
 #define CLASS_NAME  "simtemp"
 
 #define DEFAULT_SAMPLING_MS   1000   // Default execution period in milliseconds
+#define MAX_SAMPLING_MS      10000   // Max sampling period in ms.
+#define MIN_SAMPLING_MS        100   // Min sampling period in ms.
 #define DEFAULT_HI_THRES    100000   // Default HI threshold
 #define DEFAULT_LO_THRES    -20000   // Execution period in milliseconds
 #define SAMPLES_NUM 1   // Max number of samples in buffer
@@ -212,6 +214,39 @@ static __poll_t simtemp_poll(struct file *filep, poll_table *wait)
     return mask;
 }
 
+/* --------Sysfs: /sys/class/nxp_simtemp/sampling --------- */
+
+/* show(): read current sampling configuration */
+static ssize_t sampling_show(struct device *dev,
+                             struct device_attribute *attr,
+                             char *buf)
+{
+    struct simtemp_dev *sim_temp_dev_p = dev_get_drvdata(dev);
+    return scnprintf(buf, PAGE_SIZE, "%d\n", sim_temp_dev_p->sampling_ms);
+}
+
+/* store(): write new sampling configuration */
+static ssize_t sampling_store(struct device *dev,
+                              struct device_attribute *attr,
+                              const char *buf, size_t count)
+{
+    struct simtemp_dev *sim_temp_dev_p = dev_get_drvdata(dev);
+    int val;
+    dev_info(dev, "trying updating sampling interval\n");
+    if (kstrtoint(buf, 10, &val))
+        return -EINVAL;
+    if(val < MIN_SAMPLING_MS || val > MAX_SAMPLING_MS)
+        return -EINVAL;
+        
+    sim_temp_dev_p->sampling_ms = val;
+    dev_info(dev, "Updated sampling interval: %d ms\n", val);
+    
+    return count;
+}
+
+static DEVICE_ATTR_RW(sampling);
+
+
 /* ---------- File Operations Structure ---------- */
 
 static struct file_operations fops = {
@@ -278,6 +313,13 @@ static int simtemp_probe(struct platform_device *pdev)
     dev->lo_threshold = DEFAULT_LO_THRES;
     init_waitqueue_head(&dev->read_queue);
     dev->data_ready = false; // initially no data
+    
+    // Create /sys/devices/platform/nxp_simtemp/sampling
+    ret = device_create_file(&pdev->dev, &dev_attr_sampling);
+    if (ret) {
+        dev_err(&pdev->dev, "Failed to create sysfs attribute\n");
+        return ret;
+    }
 
     dev->thread_st = kthread_run(simtemp_fn, (void*)dev, "simtemp%d",dev_index);
     if (IS_ERR(dev->thread_st)) {
@@ -293,12 +335,15 @@ static int simtemp_probe(struct platform_device *pdev)
 static void simtemp_remove(struct platform_device *pdev)
 {
     struct simtemp_dev *dev = platform_get_drvdata(pdev);
+    
+    device_remove_file(&pdev->dev, &dev_attr_sampling);
 
     if (dev->thread_st) {
         kthread_stop(dev->thread_st);
         pr_info("mythread: stopped\n");
     }
 
+    class_destroy(simtemp_class);
     device_destroy(simtemp_class, dev->devt);
     cdev_del(&dev->cdev);
     unregister_chrdev_region(dev->devt, 1);
