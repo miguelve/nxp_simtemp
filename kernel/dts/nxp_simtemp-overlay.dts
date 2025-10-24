@@ -10,6 +10,9 @@
             nxp_simtemp0: nxp_simtemp@0 {
                 compatible = "nxp_simtemp";
                 dev-index = <0>;
+                sampling-ms = <500>;
+                threshold-mC = <45000>;
+                status = "okay";
             };
         };
     };
