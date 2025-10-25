@@ -97,6 +97,8 @@ static void push_sample(struct simtemp_dev *dev)
     else if (dev->mode == TEST_MODE)
     {
         p_sample->temp_mC = dev->hi_threshold + 1000;
+        /* test sample has been injected, switch back to normal mode */
+        dev->mode = NORMAL_MODE;
     }
     
     if (p_sample->temp_mC > dev->hi_threshold)
@@ -183,7 +185,6 @@ static ssize_t simtemp_read(struct file *filep, char __user *buffer, size_t len,
     p_simtemp_sample->flags = 0;
 
     bytes_read = sizeof(simtemp_smp_t);
-    pr_info("%s: sent %d bytes to user\n", DEVICE_NAME, bytes_read);
     return bytes_read;
 }
 
@@ -326,14 +327,19 @@ static ssize_t mode_store(struct device *dev,
 {
     struct simtemp_dev *sim_temp_dev_p = dev_get_drvdata(dev);
     int val;
-    if (kstrtoint(buf, 10, &val))
-        return -EINVAL;
-    if(val >= MAX_MODE || val < 0)
+    
+    if (strncmp(buf, mode_str[NORMAL_MODE],count) == 0)
+        val = NORMAL_MODE;
+    else if (strncmp(buf, mode_str[RAMP_MODE],count) == 0)
+        val = RAMP_MODE;
+    else if (strncmp(buf, mode_str[TEST_MODE],count) == 0)
+        val = TEST_MODE;
+    else
         return -EINVAL;
     
     sim_temp_dev_p->mode = val;
         
-    dev_info(dev, "Test mode: %d\n", val);
+    dev_info(dev, "Test mode: %s\n", buf);
     
     return count;
 }
@@ -460,8 +466,8 @@ static void simtemp_remove(struct platform_device *pdev)
         pr_info("mythread: stopped\n");
     }
 
-    class_destroy(simtemp_class);
     device_destroy(simtemp_class, dev->devt);
+    class_destroy(simtemp_class);
     cdev_del(&dev->cdev);
     unregister_chrdev_region(dev->devt, 1);
     pr_info("%s: device removed\n",DEVICE_NAME);

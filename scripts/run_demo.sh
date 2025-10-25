@@ -21,3 +21,7 @@ fi
 
 echo "Printing last kernel logs:"
 dmesg | tail
+
+echo "Running test..."
+
+../user/cli/test_simtemp

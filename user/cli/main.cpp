@@ -9,6 +9,8 @@
 #include <cerrno>
 #include <iomanip>
 #include <stdexcept>
+#include <thread>
+#include <cstdlib>
 
 
 // Define the struct exactly as in the driver (packed layout)
@@ -53,6 +55,28 @@ public:
         }
 
         if (pfd.revents & POLLIN)
+            return true;
+
+        return false;
+    }
+    
+    // Waits for threshold crossing
+    bool waitForThresholdCrossing(int timeout_ms = -1) {
+        struct pollfd pfd {
+            .fd = temp_fd,
+            .events = POLLPRI
+        };
+
+        int ret = ::poll(&pfd, 1, timeout_ms);
+        if (ret < 0) {
+            throw std::runtime_error("poll() failed: " + std::string(std::strerror(errno)));
+        }
+        if (ret == 0) {
+            std::cout << "Timeout reached (" << timeout_ms << " ms)\n";
+            return false;
+        }
+
+        if (pfd.revents & POLLPRI)
             return true;
 
         return false;
@@ -104,15 +128,30 @@ private:
     }
 };
 
+void set_test_mode(void) {
+    std::cout << "Setting test mode in 3s...\n";
+    system("sleep 3");
+    system("echo -n test > /sys/devices/platform/nxp_simtemp@0/mode");
+}
+
 
 int main() {
     const std::string devPath = "/dev/nxp_simtemp0";
+    TemperatureDevice tempDev(devPath);
+    int i = 0;
+    
+    std::cout << "Setting sampling to 1000ms...\n";
+    system("echo 1000 > /sys/devices/platform/nxp_simtemp@0/sampling");
+    
+    std::cout << "Sampling configuration:\n";
+    system("cat /sys/devices/platform/nxp_simtemp@0/sampling");
+    std::cout << "Mode configuration:\n";
+    system("cat /sys/devices/platform/nxp_simtemp@0/mode");
 
-    while(1)
+    std::cout << "Reading 10 samples from " << devPath << "...\n";
+    for(i = 0; i < 10; i++)
     {
         try {
-            TemperatureDevice tempDev(devPath);
-            std::cout << "Waiting for data from " << devPath << "...\n";
 
             // Wait forever (-1) until driver signals readiness
             if (tempDev.waitForSample(-1)) {
@@ -124,7 +163,60 @@ int main() {
             return 1;
         }
     }
+    
+    std::cout << "Setting sampling to 100ms..\n";
+    system("echo 100 > /sys/devices/platform/nxp_simtemp@0/sampling");
+    
+    std::cout << "Sampling configuration: \n";
+    system("cat /sys/devices/platform/nxp_simtemp@0/sampling");
 
+    std::cout << "Reading 10 samples from " << devPath << "...\n";
+    for(i = 0; i < 10; i++)
+    {
+        try {
+
+            // Wait forever (-1) until driver signals readiness
+            if (tempDev.waitForSample(-1)) {
+                std::cout << "Data is ready! Reading...\n";
+                tempDev.readSample();
+            }
+        } catch (const std::exception& ex) {
+            std::cerr << "Error: " << ex.what() << '\n';
+            return 1;
+        }
+    }
+    
+    std::cout << "Setting ramp mode..\n";
+    system("echo -n ramp > /sys/devices/platform/nxp_simtemp@0/mode");
+    
+    std::cout << "Mode configuration: \n";
+    system("cat /sys/devices/platform/nxp_simtemp@0/mode");
+
+    std::cout << "Reading 10 samples from with ramp mode" << devPath << "...\n";
+    for(i = 0; i < 10; i++)
+    {
+        try {
+
+            // Wait forever (-1) until driver signals readiness
+            if (tempDev.waitForSample(-1)) {
+                std::cout << "Data is ready! Reading...\n";
+                tempDev.readSample();
+            }
+        } catch (const std::exception& ex) {
+            std::cerr << "Error: " << ex.what() << '\n';
+            return 1;
+        }
+    }
+    
+    std::cout << "Setting test mode in 3s and polling for threshold crossing with POLLPRI flag...\n";
+    std::thread cmd_thread(set_test_mode);
+    
+    if (tempDev.waitForThresholdCrossing(-1)) {
+        std::cout << "Got an alarm! Reading...\n";
+        tempDev.readSample();
+    }
+    
+    cmd_thread.join();
 
     return 0;
 }
