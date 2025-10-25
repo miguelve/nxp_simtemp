@@ -19,9 +19,13 @@ if [ -f "$OVERLAY_PATH" ]; then
 	dtoverlay "$OVERLAY_PATH"
 fi
 
-echo "Printing last kernel logs:"
-dmesg | tail
-
 echo "Running test..."
 
 ../user/cli/test_simtemp
+
+echo "Removing driver..."
+rmmod nxp_simtemp
+
+echo "Printing last kernel logs:"
+dmesg | tail
+
